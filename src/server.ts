@@ -7,33 +7,36 @@ import config from './app/config';
 let server: Server;
 
 async function main() {
-  //await mongoose.connect('mongodb://127.0.0.1:27017/test');
   try {
     await mongoose.connect(config.database_url as string);
-    console.log('successfully run');
-    app.listen(config.port, () => {
+
+    console.log('MongoDB connected successfully');
+
+    server = app.listen(config.port, () => {
       console.log(`Example app listening on port ${config.port}`);
     });
   } catch (err) {
-    console.log(err);
+    console.error('Failed to start server:', err);
+    process.exit(1);
   }
 }
-main().then(() => {
-  console.log('Successfully Server Running');
-});
 
-// server error  unhandel rejection
-//userName:shoes_management
-//password:6e3VSMxRxRHjgZYQ
-process.on('unhandledRejection', function () {
+main();
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
+
   if (server) {
     server.close(() => {
       process.exit(1);
     });
+  } else {
+    process.exit(1);
   }
-  process.exit(1);
 });
-// undefined or human error is uncaughtException
-process.on('uncaughtException', function () {
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+
   process.exit(1);
 });
