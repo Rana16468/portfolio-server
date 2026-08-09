@@ -5,67 +5,142 @@ import AppError from "../../error/AppError";
 import { Project } from "../project/project.model";
 import { Projectdetail } from "./projectdetails.model";
 
+// src/app/utils/cache.ts
+import NodeCache from "node-cache";
 
-const createProjectDetailsIntoDb=async(payload:TProjectDetails,id:string)=>{
+export const cache = new NodeCache({
+  stdTTL: 300, // 5 মিনিট
+  checkperiod: 60,
+});
 
-    const isExistUser=await User.isUserExistByPortfolio(id);
-    if(!isExistUser){
-        throw new AppError(httpStatus.NOT_FOUND,'This User Not Exist','');
-    }
-    const isProjectExist=await Project.findById(payload.project);
-    if(!isProjectExist){
-        throw new AppError(httpStatus.NOT_FOUND,'This Project Not Exist','');
-    }
+export const CACHE_KEYS = {
+  ALL_BLOGS: "all-blogs",
+  SINGLE_BLOG: (id: string) => `blog-${id}`,
 
-    const buildProjectdetails= new Projectdetail(payload);
-    const result=await buildProjectdetails.save();
-    return result;
+  ALL_PROJECT_DETAILS: "all-project-details",
+  PROJECT_DETAILS_BY_PROJECT: (projectId: string) =>
+    `project-details-by-project-${projectId}`,
+};
 
-}
+const createProjectDetailsIntoDb = async (
+  payload: TProjectDetails,
+  id: string
+) => {
+  const isExistUser = await User.isUserExistByPortfolio(id);
+  if (!isExistUser) {
+    throw new AppError(httpStatus.NOT_FOUND, "This User Not Exist", "");
+  }
 
-const findAllProjectDetailsIntoDb=async()=>{
-    
+  const isProjectExist = await Project.findById(payload.project);
+  if (!isProjectExist) {
+    throw new AppError(httpStatus.NOT_FOUND, "This Project Not Exist", "");
+  }
 
-    const result=await Projectdetail.find().populate('project');
-    return result;
-}
-const  findBySpecificProjectDetailsIntoDb=async(id:string)=>{
+  const buildProjectdetails = new Projectdetail(payload);
+  const result = await buildProjectdetails.save();
 
-    
-    const  result=await Projectdetail.findOne({project:id}).populate('project');;
-    return result
-}
+  cache.del(CACHE_KEYS.ALL_PROJECT_DETAILS);
+  cache.del(
+    CACHE_KEYS.PROJECT_DETAILS_BY_PROJECT(payload.project.toString())
+  );
 
-const updateProjectDetailsFromDb=async(payload:Partial<TProjectDetails>,userId:string,id:string)=>{
+  return result;
+};
 
-    const isExistUser=await User.isUserExistByPortfolio(userId);
-    if(!isExistUser){
-        throw new AppError(httpStatus.NOT_FOUND,'This User Not Exist','');
-    }
-    const isProjectDeatisExist=await Projectdetail.findById(id);
-    if(!isProjectDeatisExist){
-        throw new AppError(httpStatus.NOT_FOUND,'This Project Details is Not Exist','');
-    }
+const findAllProjectDetailsIntoDb = async () => {
+  const cached = cache.get(CACHE_KEYS.ALL_PROJECT_DETAILS);
+  if (cached) {
+    return cached;
+  }
 
-    const result=await Projectdetail.findByIdAndUpdate(id,payload,{new:true,runValidators:true});
-    return result;
-}
+  const result = await Projectdetail.find().populate("project");
 
-const deleteProjectDetailsFromDb=async(userId:string,id:string)=>{
+  cache.set(CACHE_KEYS.ALL_PROJECT_DETAILS, result);
 
-    const isExistUser=await User.isUserExistByPortfolio(userId);
-    if(!isExistUser){
-        throw new AppError(httpStatus.NOT_FOUND,'This User Not Exist','');
-    }
+  return result;
+};
 
-    const result=await Projectdetail.deleteOne({_id:id});
-    return result;
-}
+const findBySpecificProjectDetailsIntoDb = async (id: string) => {
+  const cacheKey = CACHE_KEYS.PROJECT_DETAILS_BY_PROJECT(id);
 
-export const ProjectDetailsService={
-    createProjectDetailsIntoDb,
-    findAllProjectDetailsIntoDb,
-    findBySpecificProjectDetailsIntoDb,
-    updateProjectDetailsFromDb,
-    deleteProjectDetailsFromDb
-}
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await Projectdetail.findOne({ project: id }).populate(
+    "project"
+  );
+
+  if (result) {
+    cache.set(cacheKey, result);
+  }
+
+  return result;
+};
+
+const updateProjectDetailsFromDb = async (
+  payload: Partial<TProjectDetails>,
+  userId: string,
+  id: string
+) => {
+  const isExistUser = await User.isUserExistByPortfolio(userId);
+  if (!isExistUser) {
+    throw new AppError(httpStatus.NOT_FOUND, "This User Not Exist", "");
+  }
+
+  const isProjectDeatisExist = await Projectdetail.findById(id);
+  if (!isProjectDeatisExist) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "This Project Details is Not Exist",
+      ""
+    );
+  }
+
+  const result = await Projectdetail.findByIdAndUpdate(id, payload, {
+    new: true,
+    runValidators: true,
+  });
+  cache.del(CACHE_KEYS.ALL_PROJECT_DETAILS);
+  cache.del(
+    CACHE_KEYS.PROJECT_DETAILS_BY_PROJECT(
+      isProjectDeatisExist.project.toString()
+    )
+  );
+  if (payload.project) {
+    cache.del(CACHE_KEYS.PROJECT_DETAILS_BY_PROJECT(payload.project.toString()));
+  }
+
+  return result;
+};
+
+const deleteProjectDetailsFromDb = async (userId: string, id: string) => {
+  const isExistUser = await User.isUserExistByPortfolio(userId);
+  if (!isExistUser) {
+    throw new AppError(httpStatus.NOT_FOUND, "This User Not Exist", "");
+  }
+
+  const isExistProjectDetails = await Projectdetail.findById(id);
+
+  const result = await Projectdetail.deleteOne({ _id: id });
+
+  cache.del(CACHE_KEYS.ALL_PROJECT_DETAILS);
+  if (isExistProjectDetails) {
+    cache.del(
+      CACHE_KEYS.PROJECT_DETAILS_BY_PROJECT(
+        isExistProjectDetails.project.toString()
+      )
+    );
+  }
+
+  return result;
+};
+
+export const ProjectDetailsService = {
+  createProjectDetailsIntoDb,
+  findAllProjectDetailsIntoDb,
+  findBySpecificProjectDetailsIntoDb,
+  updateProjectDetailsFromDb,
+  deleteProjectDetailsFromDb,
+};

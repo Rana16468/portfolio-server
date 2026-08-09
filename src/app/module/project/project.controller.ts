@@ -19,7 +19,7 @@ const createProject:RequestHandler=catchAsync(async(req,res)=>{
 
 const  findAllProject:RequestHandler=catchAsync(async(req,res)=>{
 
-   const result=await ProjectServices.findAllProjectIntoDb();
+   const result=await ProjectServices.findAllProjectIntoDb(req.query);
    sendRespone(res,{success:true,statusCode:httpStatus.OK,message:"Successfully Find All Project",data:result});
 
 });
